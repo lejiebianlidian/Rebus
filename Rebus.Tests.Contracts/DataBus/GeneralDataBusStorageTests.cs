@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -9,7 +10,7 @@ using Rebus.Compression;
 using Rebus.DataBus;
 using Rebus.Extensions;
 using Rebus.Tests.Contracts.Extensions;
-using Rebus.Time;
+// ReSharper disable ArgumentsStyleOther
 
 namespace Rebus.Tests.Contracts.DataBus
 {
@@ -19,17 +20,112 @@ namespace Rebus.Tests.Contracts.DataBus
     public abstract class GeneralDataBusStorageTests<TDataStorageFactory> : FixtureBase where TDataStorageFactory : IDataBusStorageFactory, new()
     {
         IDataBusStorage _storage;
+        IDataBusStorageManagement _management;
         TDataStorageFactory _factory;
 
         protected override void SetUp()
         {
             _factory = new TDataStorageFactory();
             _storage = _factory.Create();
+            _management = _storage as IDataBusStorageManagement;
         }
 
         protected override void TearDown()
         {
             _factory.CleanUp();
+        }
+
+        [Test]
+        public async Task CanQueryByTimeStamps_ReadTime()
+        {
+            if (NoManagement()) return;
+
+            async Task CreateAttachment(DateTime readTime, string attachmendId)
+            {
+                _factory.FakeIt(DateTimeOffset.Now);
+                using (var source = new MemoryStream(new byte[0]))
+                {
+                    await _storage.Save(attachmendId, source);
+                }
+
+                // update read time
+                _factory.FakeIt(readTime);
+                using (await _storage.Read(attachmendId))
+                {
+                }
+            }
+
+            await CreateAttachment(new DateTime(2019, 01, 01), "id1");
+            await CreateAttachment(new DateTime(2019, 02, 01), "id2");
+            await CreateAttachment(new DateTime(2019, 03, 01), "id3");
+            await CreateAttachment(new DateTime(2019, 04, 01), "id4");
+            await CreateAttachment(new DateTime(2019, 05, 01), "id5");
+
+            var ids1 = _management.Query(readTime: new TimeRange(from: new DateTime(2019, 02, 01))).InOrder().ToList();
+            var ids2 = _management.Query(readTime: new TimeRange(from: new DateTime(2019, 03, 01))).InOrder().ToList();
+            var ids3 = _management.Query(readTime: new TimeRange(from: new DateTime(2019, 03, 01), to: new DateTime(2019, 05, 01))).InOrder().ToList();
+
+            Assert.That(ids1, Is.EqualTo(new[] { "id2", "id3", "id4", "id5" }));
+            Assert.That(ids2, Is.EqualTo(new[] { "id3", "id4", "id5" }));
+            Assert.That(ids3, Is.EqualTo(new[] { "id3", "id4" }));
+        }
+
+        [Test]
+        public async Task CanQueryByTimeStamps_SaveTime()
+        {
+            if (NoManagement()) return;
+
+            async Task CreateAttachment(DateTime saveTime, string attachmendId)
+            {
+                _factory.FakeIt(new DateTimeOffset(saveTime));
+
+                using (var source = new MemoryStream(new byte[0]))
+                {
+                    await _storage.Save(attachmendId, source);
+                }
+            }
+
+            await CreateAttachment(new DateTime(2019, 01, 01), "id1");
+            await CreateAttachment(new DateTime(2019, 02, 01), "id2");
+            await CreateAttachment(new DateTime(2019, 03, 01), "id3");
+            await CreateAttachment(new DateTime(2019, 04, 01), "id4");
+            await CreateAttachment(new DateTime(2019, 05, 01), "id5");
+
+            var ids1 = _management.Query(saveTime: new TimeRange(from: new DateTime(2019, 02, 01))).InOrder().ToList();
+            var ids2 = _management.Query(saveTime: new TimeRange(from: new DateTime(2019, 03, 01))).InOrder().ToList();
+            var ids3 = _management.Query(saveTime: new TimeRange(from: new DateTime(2019, 03, 01), to: new DateTime(2019, 05, 01))).InOrder().ToList();
+
+            Assert.That(ids1, Is.EqualTo(new[] { "id2", "id3", "id4", "id5" }));
+            Assert.That(ids2, Is.EqualTo(new[] { "id3", "id4", "id5" }));
+            Assert.That(ids3, Is.EqualTo(new[] { "id3", "id4" }));
+        }
+
+        [Test]
+        public async Task CanDeleteAttachment()
+        {
+            if (NoManagement()) return;
+
+            var knownId = Guid.NewGuid().ToString("N");
+
+            using (var source = new MemoryStream(new byte[0]))
+            {
+                await _storage.Save(knownId, source);
+            }
+
+            using (var sourceStream = await _storage.Read(knownId))
+            {
+                Assert.That(sourceStream, Is.Not.Null,
+                    $"Expected a successful opening + not-null-check when trying to read attachment with ID {knownId}");
+            }
+
+            await _management.Delete(knownId);
+
+            var exception = Assert.ThrowsAsync<ArgumentException>(() => _storage.Read(knownId),
+                $"Expected an ArgumentException, because the attachment with ID {knownId} was deleted");
+
+            Console.WriteLine(exception);
+
+            Assert.That(exception.ToString(), Contains.Substring(knownId));
         }
 
         [Test]
@@ -66,16 +162,14 @@ namespace Rebus.Tests.Contracts.DataBus
         [Test]
         public void ThrowsWhenLoadingNonExistentId()
         {
-            var exception = Assert.Throws<AggregateException>(() =>
+            var exception = Assert.ThrowsAsync<ArgumentException>(async () =>
             {
-                var result = _storage.Read(Guid.NewGuid().ToString()).Result;
+                var result = await _storage.Read(Guid.NewGuid().ToString());
             });
 
-            var baseException = exception.GetBaseException();
+            Console.WriteLine(exception);
 
-            Console.WriteLine(baseException);
-
-            Assert.That(baseException, Is.TypeOf<ArgumentException>());
+            Assert.That(exception, Is.TypeOf<ArgumentException>());
         }
 
         [Test]
@@ -104,7 +198,7 @@ namespace Rebus.Tests.Contracts.DataBus
         public async Task CanGetStandardMetada()
         {
             var fakeTime = new DateTimeOffset(new DateTime(2016, 6, 17));
-            
+
             _factory.FakeIt(fakeTime);
 
             const string knownId = "known id";
@@ -209,6 +303,30 @@ namespace Rebus.Tests.Contracts.DataBus
 
                 Assert.That(readData, Is.EqualTo(originalData));
             }
+        }
+
+        bool NoManagement([CallerMemberName] string testMethod = null)
+        {
+            if (_management == null)
+            {
+                Console.WriteLine(
+                    $@"
+
+The 
+
+    {_storage.GetType()} 
+
+implementation of IDataBusStorage does not implement IDataBusStorageManagement, so the test method
+
+    {testMethod}
+
+is skipped
+
+");
+                return true;
+            }
+
+            return false;
         }
     }
 }
