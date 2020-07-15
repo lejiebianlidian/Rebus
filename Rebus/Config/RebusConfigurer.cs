@@ -35,6 +35,7 @@ using Rebus.Retry.FailFast;
 using Rebus.Time;
 using Rebus.Topic;
 // ReSharper disable EmptyGeneralCatchClause
+// ReSharper disable ArgumentsStyleNamedExpression
 
 namespace Rebus.Config
 {
@@ -86,7 +87,7 @@ namespace Rebus.Config
         public RebusConfigurer DataBus(Action<StandardConfigurer<IDataBusStorage>> configurer)
         {
             if (configurer == null) throw new ArgumentNullException(nameof(configurer));
-            
+
             configurer(new StandardConfigurer<IDataBusStorage>(_injectionist, _options));
 
             if (_injectionist.Has<IDataBusStorage>())
@@ -203,7 +204,7 @@ namespace Rebus.Config
             _injectionist.Register(c => c.Get<CancellationTokenSource>().Token);
 
             PossiblyRegisterDefault<IRebusLoggerFactory>(c => new ConsoleLoggerFactory(true));
-            
+
             PossiblyRegisterDefault<IRebusTime>(c => new DefaultRebusTime());
 
             //PossiblyRegisterDefault<IAsyncTaskFactory>(c => new TimerAsyncTaskFactory(c.Get<IRebusLoggerFactory>()));
@@ -225,7 +226,7 @@ namespace Rebus.Config
 
             PossiblyRegisterDefault<ITimeoutManager>(c => new DisabledTimeoutManager());
 
-            PossiblyRegisterDefault<ISerializer>(c => new JsonSerializer());
+            PossiblyRegisterDefault<ISerializer>(c => new JsonSerializer(c.Get<IMessageTypeNameConvention>()));
 
             PossiblyRegisterDefault<IPipelineInvoker>(c =>
             {
@@ -332,10 +333,11 @@ namespace Rebus.Config
                 var rebusLoggerFactory = c.Get<IRebusLoggerFactory>();
                 var options = c.Get<Options>();
                 var rebusTime = c.Get<IRebusTime>();
+                var messageTypeNameConvention = c.Get<IMessageTypeNameConvention>();
 
                 return new DefaultPipeline()
                     .OnReceive(c.Get<IRetryStrategyStep>())
-                    .OnReceive(new FailFastStep(c.Get<IErrorTracker>(), c.Get<IFailFastChecker>()))
+                    .OnReceive(new FailFastStep(c.Get<IErrorTracker>(), c.Get<IFailFastChecker>(), c.Get<IErrorHandler>(), c.Get<ITransport>()))
                     .OnReceive(c.Get<HandleDeferredMessagesStep>())
                     .OnReceive(new HydrateIncomingMessageStep(c.Get<IDataBus>()))
                     .OnReceive(new DeserializeIncomingMessageStep(serializer))
@@ -344,7 +346,7 @@ namespace Rebus.Config
                     .OnReceive(new LoadSagaDataStep(c.Get<ISagaStorage>(), rebusLoggerFactory))
                     .OnReceive(new DispatchIncomingMessageStep(rebusLoggerFactory))
 
-                    .OnSend(new AssignDefaultHeadersStep(transport, rebusTime, options.DefaultReturnAddressOrNull))
+                    .OnSend(new AssignDefaultHeadersStep(transport, rebusTime, messageTypeNameConvention, options.DefaultReturnAddressOrNull))
                     .OnSend(new FlowCorrelationIdStep())
                     .OnSend(new AutoHeadersOutgoingStep())
                     .OnSend(new SerializeOutgoingMessageStep(serializer))
@@ -359,6 +361,8 @@ namespace Rebus.Config
             PossiblyRegisterDefault<IDataBus>(c => new DisabledDataBus());
 
             PossiblyRegisterDefault<ITopicNameConvention>(c => new DefaultTopicNameConvention());
+
+            PossiblyRegisterDefault<IMessageTypeNameConvention>(c => new SimpleAssemblyQualifiedMessageTypeNameConvention());
 
             // configuration hack - keep these two bad boys around to have them available at the last moment before returning the built bus instance...
             Action startAction = null;

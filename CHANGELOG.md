@@ -1027,6 +1027,20 @@
 * Add `RebusTransactionScopeSuppressor`, which may be used in cases where an already active Rebus transaction scope must be temporarily suppressed
 * Also target .NET Standard 2.1 (i.e. .NET Core 3.0)
 
+## 6.0.1
+* Make file system transport compatible with previous versions of Rebus - thanks [jr01]
+
+## 6.1.0
+* Introduce `IMessageTypeNameConvention`, which defaults to simple assembly-qualified type names. Can be customized by calling `.Serialization(s => s.UseCustomMessageTypeNames().Add(...))`
+
+## 6.2.1
+* Add extension method that makes it possible to manually dead-letter the message currently being handled
+
+## 6.3.0
+* Add ability to point out correlation properties of saga data by specifying them as strings - thanks [seankearon]
+
+## 6.3.1
+* Fix bug that would prevent fail-fast exceptions to cause messages to fail fast when thrown in a 2nd level retry
 
 ---
 
@@ -1052,6 +1066,7 @@
 [jeffreyabecker]: https://github.com/jeffreyabecker
 [jods4]: https://github.com/jods4
 [joshua5822]: https://github.com/joshua5822
+[jr01]: https://github.com/jr01
 [jsvahn]: https://github.com/jsvahn
 [kevbite]: https://github.com/kevbite
 [krivin]: https://github.com/krivin

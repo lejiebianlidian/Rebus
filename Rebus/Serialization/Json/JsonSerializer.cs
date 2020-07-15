@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -37,27 +36,14 @@ namespace Rebus.Serialization.Json
 
         readonly JsonSerializerSettings _settings;
         readonly Encoding _encoding;
+        readonly IMessageTypeNameConvention _messageTypeNameConvention;
         readonly string _encodingHeaderValue;
 
-        public JsonSerializer()
-            : this(DefaultSettings, DefaultEncoding)
+        public JsonSerializer(IMessageTypeNameConvention messageTypeNameConvention, JsonSerializerSettings jsonSerializerSettings = null, Encoding encoding = null)
         {
-        }
-
-        internal JsonSerializer(Encoding encoding)
-            : this(DefaultSettings, encoding)
-        {
-        }
-
-        internal JsonSerializer(JsonSerializerSettings jsonSerializerSettings)
-            : this(jsonSerializerSettings, DefaultEncoding)
-        {
-        }
-
-        internal JsonSerializer(JsonSerializerSettings jsonSerializerSettings, Encoding encoding)
-        {
-            _settings = jsonSerializerSettings;
-            _encoding = encoding;
+            _messageTypeNameConvention = messageTypeNameConvention ?? throw new ArgumentNullException(nameof(messageTypeNameConvention));
+            _settings = jsonSerializerSettings ?? DefaultSettings;
+            _encoding = encoding ?? DefaultEncoding;
 
             _encodingHeaderValue = $"{JsonContentType};charset={_encoding.HeaderName}";
         }
@@ -75,7 +61,7 @@ namespace Rebus.Serialization.Json
 
             if (!headers.ContainsKey(Headers.Type))
             {
-                headers[Headers.Type] = message.Body.GetType().GetSimpleAssemblyQualifiedName();
+                headers[Headers.Type] = _messageTypeNameConvention.GetTypeName(message.Body.GetType());
             }
 
             return new TransportMessage(headers, bytes);
@@ -137,20 +123,13 @@ namespace Rebus.Serialization.Json
             return new Message(headers, bodyObject);
         }
 
-        static readonly ConcurrentDictionary<string, Type> TypeCache = new ConcurrentDictionary<string, Type>();
-
-        static Type GetTypeOrNull(TransportMessage transportMessage)
+        Type GetTypeOrNull(TransportMessage transportMessage)
         {
             if (!transportMessage.Headers.TryGetValue(Headers.Type, out var typeName)) return null;
 
-            try
-            {
-                return TypeCache.GetOrAdd(typeName, Type.GetType);
-            }
-            catch (Exception exception)
-            {
-                throw new FormatException($"Could not get .NET type named '{typeName}'", exception);
-            }
+            var type = _messageTypeNameConvention.GetType(typeName) ?? throw new FormatException($"Could not get .NET type named '{typeName}'");
+
+            return type;
         }
 
         object Deserialize(string bodyString, Type type)
@@ -172,9 +151,6 @@ namespace Rebus.Serialization.Json
             }
         }
 
-        static string Limit(string bodyString, int maxLength)
-        {
-            return string.Concat(bodyString.Substring(0, maxLength), " (......)");
-        }
+        static string Limit(string bodyString, int maxLength) => string.Concat(bodyString.Substring(0, maxLength), " (......)");
     }
 }
