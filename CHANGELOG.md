@@ -1042,6 +1042,28 @@
 ## 6.3.1
 * Fix bug that would prevent fail-fast exceptions to cause messages to fail fast when thrown in a 2nd level retry
 
+## 6.4.0
+* Enforce handler registration in built-in handler activator before the bus is started. If one absolutely wants to add handlers AFTER having started the bus, it's still possible, simply by temporarily setting number of workers = 0
+
+## 6.4.1
+* Revert breaking change that snuck into the `IAsyncTaskFactory` interface
+
+## 6.4.2
+* Add [UsedImplicitly] annotation to [IHandleMessages] so implementations doesn't show up as unused - thanks [zlepper]
+
+## 6.5.2
+* Make the number of saga data conflict resolution attempts configurable
+* Additional endpoint mapping methods - thanks [kendallb]
+
+## 6.5.3
+* `isCompliant: true` makes Rebus much more CLS compliant
+
+## 6.5.4
+* Use GUID in file name when doing read/write test in file system data bus storage to avoid colliding with other processes starting up - thanks [kendallb]
+
+## 6.5.5
+* Perform directory read/write access check in file system saga persister too - thanks [kendallb]
+
 ---
 
 [AndreaCuneo]: https://github.com/AndreaCuneo
@@ -1068,6 +1090,7 @@
 [joshua5822]: https://github.com/joshua5822
 [jr01]: https://github.com/jr01
 [jsvahn]: https://github.com/jsvahn
+[kendallb]: https://github.com/kendallb
 [kevbite]: https://github.com/kevbite
 [krivin]: https://github.com/krivin
 [Liero]: https://github.com/Liero
@@ -1103,3 +1126,4 @@
 [trevorreeves]: https://github.com/trevorreeves
 [xenoputtss]: https://github.com/xenoputtss
 [zabulus]: https://github.com/zabulus
+[zlepper]: https://github.com/zlepper
